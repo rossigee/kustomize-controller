@@ -697,6 +697,34 @@ spec:
                 description: ObservedGeneration is the last reconciled generation.
                 format: int64
                 type: integer
+              queueMetadata:
+                description: |-
+                  QueueMetadata provides visibility into reconciliation queue state when a resource
+                  has been discovered by the controller but is waiting for processing.
+                  This field helps distinguish between "undiscovered" vs "queued" resources during
+                  high load conditions.
+                properties:
+                  estimatedProcessingTime:
+                    description: |-
+                      EstimatedProcessingTime provides an estimate of when reconciliation will begin
+                      based on current queue depth and historical processing times.
+                      This field is optional and may not be provided in all configurations
+                      depending on the queue-time-estimation feature flag.
+                    format: date-time
+                    type: string
+                  position:
+                    description: |-
+                      Position indicates the current position in the reconciliation queue.
+                      This field is optional and may not be provided in all configurations
+                      depending on the queue-position-tracking feature flag.
+                    type: integer
+                  queuedAt:
+                    description: |-
+                      QueuedAt indicates when the resource was queued for reconciliation.
+                      This helps track how long a resource has been waiting for processing.
+                    format: date-time
+                    type: string
+                type: object
             type: object
         type: object
     served: true
