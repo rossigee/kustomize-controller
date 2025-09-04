@@ -24,13 +24,13 @@ import (
 	"github.com/fluxcd/pkg/runtime/predicates"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
@@ -132,13 +132,13 @@ func (r *KustomizationReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 	if queueStatusEnabled {
 		positionTrackingEnabled, _ := features.Enabled(features.QueuePositionTracking)
 		timeEstimationEnabled, _ := features.Enabled(features.QueueTimeEstimation)
-		
+
 		r.QueueStatusManager = queue.NewQueueStatusManager(mgr.GetClient(), queue.QueueStatusManagerOptions{
 			EnablePositions:  positionTrackingEnabled,
 			EnableEstimation: timeEstimationEnabled,
 			UpdateInterval:   30 * time.Second,
 		})
-		
+
 		// Start background status updater
 		go r.QueueStatusManager.StartStatusUpdater(ctx)
 	}

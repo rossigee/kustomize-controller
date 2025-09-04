@@ -101,7 +101,7 @@ func TestNewQueueStatusManager(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := NewQueueStatusManager(fakeClient, tt.opts)
-			
+
 			if got.enablePositions != tt.want.enablePositions {
 				t.Errorf("NewQueueStatusManager() enablePositions = %v, want %v", got.enablePositions, tt.want.enablePositions)
 			}
@@ -118,67 +118,67 @@ func TestNewQueueStatusManager(t *testing.T) {
 func TestQueueStatusManager_TrackQueued(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = kustomizev1.AddToScheme(scheme)
-	
-	// Create a test kustomization with observedGeneration: -1 (undiscovered)
-	kustomization := &kustomizev1.Kustomization{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: kustomizev1.GroupVersion.String(),
-			Kind:       "Kustomization",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-kustomization",
-			Namespace: "test-namespace",
-		},
-		Status: kustomizev1.KustomizationStatus{
-			ObservedGeneration: -1, // Undiscovered state
-		},
-	}
-	
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(kustomization).
-		WithStatusSubresource(&kustomizev1.Kustomization{}).
-		Build()
 
 	tests := []struct {
-		name                 string
-		enablePositions      bool
-		enableEstimation     bool
-		expectPositions      bool
-		expectEstimation     bool
+		name             string
+		enablePositions  bool
+		enableEstimation bool
+		expectPositions  bool
+		expectEstimation bool
 	}{
 		{
-			name:                 "basic queue tracking",
-			enablePositions:      false,
-			enableEstimation:     false,
-			expectPositions:      false,
-			expectEstimation:     false,
+			name:             "basic queue tracking",
+			enablePositions:  false,
+			enableEstimation: false,
+			expectPositions:  false,
+			expectEstimation: false,
 		},
 		{
-			name:                 "with position tracking",
-			enablePositions:      true,
-			enableEstimation:     false,
-			expectPositions:      true,
-			expectEstimation:     false,
+			name:             "with position tracking",
+			enablePositions:  true,
+			enableEstimation: false,
+			expectPositions:  true,
+			expectEstimation: false,
 		},
 		{
-			name:                 "with time estimation",
-			enablePositions:      false,
-			enableEstimation:     true,
-			expectPositions:      false,
-			expectEstimation:     true,
+			name:             "with time estimation",
+			enablePositions:  false,
+			enableEstimation: true,
+			expectPositions:  false,
+			expectEstimation: true,
 		},
 		{
-			name:                 "with both position and estimation",
-			enablePositions:      true,
-			enableEstimation:     true,
-			expectPositions:      true,
-			expectEstimation:     true,
+			name:             "with both position and estimation",
+			enablePositions:  true,
+			enableEstimation: true,
+			expectPositions:  true,
+			expectEstimation: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Create a fresh kustomization for each test to avoid shared state
+			kustomization := &kustomizev1.Kustomization{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: kustomizev1.GroupVersion.String(),
+					Kind:       "Kustomization",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kustomization",
+					Namespace: "test-namespace",
+				},
+				Status: kustomizev1.KustomizationStatus{
+					ObservedGeneration: -1, // Undiscovered state
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(kustomization).
+				WithStatusSubresource(&kustomizev1.Kustomization{}).
+				Build()
+
 			mgr := NewQueueStatusManager(fakeClient, QueueStatusManagerOptions{
 				EnablePositions:  tt.enablePositions,
 				EnableEstimation: tt.enableEstimation,
@@ -311,7 +311,7 @@ func TestQueueStatusManager_TrackDequeued(t *testing.T) {
 func TestQueueStatusManager_TrackQueuedAlreadyProcessed(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = kustomizev1.AddToScheme(scheme)
-	
+
 	// Create a test kustomization with observedGeneration: 1 (already processed)
 	kustomization := &kustomizev1.Kustomization{
 		TypeMeta: metav1.TypeMeta{
@@ -326,7 +326,7 @@ func TestQueueStatusManager_TrackQueuedAlreadyProcessed(t *testing.T) {
 			ObservedGeneration: 1, // Already processed
 		},
 	}
-	
+
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(kustomization).
@@ -381,7 +381,7 @@ func TestQueueStatusManager_GetQueuedItems(t *testing.T) {
 	mgr.items[req2.String()] = QueueItem{Request: req2, QueuedAt: time.Now(), Position: 2}
 
 	items := mgr.GetQueuedItems()
-	
+
 	if len(items) != 2 {
 		t.Errorf("GetQueuedItems() returned %d items, want 2", len(items))
 	}
@@ -477,14 +477,14 @@ func TestQueueStatusManager_FormatQueueMessage(t *testing.T) {
 
 // Helper function to check if string contains substring
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || (len(s) > len(substr) && 
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
-		 func() bool {
-			 for i := 1; i <= len(s)-len(substr); i++ {
-				 if s[i:i+len(substr)] == substr {
-					 return true
-				 }
-			 }
-			 return false
-		 }())))
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || (len(s) > len(substr) &&
+		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
+			func() bool {
+				for i := 1; i <= len(s)-len(substr); i++ {
+					if s[i:i+len(substr)] == substr {
+						return true
+					}
+				}
+				return false
+			}())))
 }

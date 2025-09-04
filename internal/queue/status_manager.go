@@ -34,15 +34,15 @@ import (
 // QueueStatusManager tracks resources in the reconciliation queue and provides
 // status visibility to improve user experience during high load conditions.
 type QueueStatusManager struct {
-	client           client.Client
-	mu               sync.RWMutex
-	items            map[string]QueueItem
-	
+	client client.Client
+	mu     sync.RWMutex
+	items  map[string]QueueItem
+
 	// Configuration flags
-	enablePositions   bool
-	enableEstimation  bool
-	updateInterval    time.Duration
-	
+	enablePositions  bool
+	enableEstimation bool
+	updateInterval   time.Duration
+
 	// Metrics for estimation
 	avgProcessingTime time.Duration
 	queueDepthHistory []int
@@ -50,20 +50,20 @@ type QueueStatusManager struct {
 
 // QueueItem represents a resource in the reconciliation queue with metadata.
 type QueueItem struct {
-	Request         reconcile.Request
-	QueuedAt        time.Time
-	Position        int  // Optional: current position in queue
-	EstimatedStart  *time.Time  // Optional: estimated processing time
+	Request        reconcile.Request
+	QueuedAt       time.Time
+	Position       int        // Optional: current position in queue
+	EstimatedStart *time.Time // Optional: estimated processing time
 }
 
 // QueueStatusManagerOptions configures the behavior of QueueStatusManager.
 type QueueStatusManagerOptions struct {
 	// EnablePositions controls whether queue position tracking is enabled
 	EnablePositions bool
-	
-	// EnableEstimation controls whether processing time estimation is enabled  
+
+	// EnableEstimation controls whether processing time estimation is enabled
 	EnableEstimation bool
-	
+
 	// UpdateInterval controls how often queue positions are recalculated
 	UpdateInterval time.Duration
 }
@@ -73,7 +73,7 @@ func NewQueueStatusManager(client client.Client, opts QueueStatusManagerOptions)
 	if opts.UpdateInterval == 0 {
 		opts.UpdateInterval = 30 * time.Second
 	}
-	
+
 	return &QueueStatusManager{
 		client:            client,
 		items:             make(map[string]QueueItem),
@@ -89,28 +89,28 @@ func NewQueueStatusManager(client client.Client, opts QueueStatusManagerOptions)
 func (m *QueueStatusManager) TrackQueued(ctx context.Context, req reconcile.Request) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	key := req.String()
 	item := QueueItem{
 		Request:  req,
 		QueuedAt: time.Now(),
 	}
-	
+
 	// Calculate position if enabled
 	position := len(m.items) + 1 // Current queue position
 	if m.enablePositions {
 		item.Position = position
 	}
-	
+
 	// Calculate estimated processing time if enabled
 	if m.enableEstimation {
 		estimatedWait := time.Duration(position) * m.avgProcessingTime
 		estimatedStart := time.Now().Add(estimatedWait)
 		item.EstimatedStart = &estimatedStart
 	}
-	
+
 	m.items[key] = item
-	
+
 	// Update resource status immediately
 	return m.updateResourceStatus(ctx, req, item)
 }
@@ -120,7 +120,7 @@ func (m *QueueStatusManager) TrackQueued(ctx context.Context, req reconcile.Requ
 func (m *QueueStatusManager) TrackDequeued(req reconcile.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	key := req.String()
 	delete(m.items, key)
 }
@@ -133,36 +133,36 @@ func (m *QueueStatusManager) updateResourceStatus(ctx context.Context, req recon
 		// Resource might have been deleted, which is fine
 		return client.IgnoreNotFound(err)
 	}
-	
+
 	// Only update if resource is still in "undiscovered" state
 	if obj.Status.ObservedGeneration != -1 {
 		return nil // Already processed or processing
 	}
-	
+
 	// Create a copy for modification
 	patch := obj.DeepCopy()
-	
+
 	// Set to "discovered but not processed" state
 	patch.Status.ObservedGeneration = 0
-	
+
 	// Add queue metadata
 	patch.Status.QueueMetadata = &kustomizev1.QueueMetadata{
 		QueuedAt: &metav1.Time{Time: item.QueuedAt},
 	}
-	
+
 	if m.enablePositions && item.Position > 0 {
 		patch.Status.QueueMetadata.Position = &item.Position
 	}
-	
+
 	if m.enableEstimation && item.EstimatedStart != nil {
 		patch.Status.QueueMetadata.EstimatedProcessingTime = &metav1.Time{Time: *item.EstimatedStart}
 	}
-	
+
 	// Set appropriate conditions
 	message := m.formatQueueMessage(item)
 	conditions.MarkFalse(patch, meta.ReadyCondition, "Queued", "%s", message)
 	conditions.MarkFalse(patch, meta.ReconcilingCondition, "Pending", "Waiting for controller capacity")
-	
+
 	// Update status
 	return m.client.Status().Update(ctx, patch)
 }
@@ -170,13 +170,13 @@ func (m *QueueStatusManager) updateResourceStatus(ctx context.Context, req recon
 // formatQueueMessage creates a user-friendly message about queue status.
 func (m *QueueStatusManager) formatQueueMessage(item QueueItem) string {
 	baseMsg := "Resource queued for reconciliation"
-	
+
 	var details []string
-	
+
 	if m.enablePositions && item.Position > 0 {
 		details = append(details, fmt.Sprintf("position %d", item.Position))
 	}
-	
+
 	if m.enableEstimation && item.EstimatedStart != nil {
 		waitTime := time.Until(*item.EstimatedStart)
 		if waitTime > 0 {
@@ -189,11 +189,11 @@ func (m *QueueStatusManager) formatQueueMessage(item QueueItem) string {
 		queuedDuration := time.Since(item.QueuedAt)
 		details = append(details, fmt.Sprintf("queued for %v", queuedDuration.Round(time.Second)))
 	}
-	
+
 	if len(details) > 0 {
 		return fmt.Sprintf("%s (%s)", baseMsg, fmt.Sprintf("%s", details[0]))
 	}
-	
+
 	return baseMsg
 }
 
@@ -203,10 +203,10 @@ func (m *QueueStatusManager) StartStatusUpdater(ctx context.Context) {
 	if !m.enablePositions && !m.enableEstimation {
 		return // No periodic updates needed
 	}
-	
+
 	ticker := time.NewTicker(m.updateInterval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -226,16 +226,16 @@ func (m *QueueStatusManager) updateAllPositions(ctx context.Context) {
 		items = append(items, item)
 	}
 	m.mu.Unlock()
-	
+
 	// Skip if no items to update
 	if len(items) == 0 {
 		return
 	}
-	
+
 	// Update positions and estimates
 	for i, item := range items {
 		updated := false
-		
+
 		if m.enablePositions {
 			newPosition := i + 1
 			if item.Position != newPosition {
@@ -243,7 +243,7 @@ func (m *QueueStatusManager) updateAllPositions(ctx context.Context) {
 				updated = true
 			}
 		}
-		
+
 		if m.enableEstimation {
 			estimatedWait := time.Duration(item.Position) * m.avgProcessingTime
 			newEstimatedStart := time.Now().Add(estimatedWait)
@@ -252,12 +252,12 @@ func (m *QueueStatusManager) updateAllPositions(ctx context.Context) {
 				updated = true
 			}
 		}
-		
+
 		if updated {
 			m.mu.Lock()
 			m.items[item.Request.String()] = item
 			m.mu.Unlock()
-			
+
 			// Update the resource status
 			if err := m.updateResourceStatus(ctx, item.Request, item); err != nil {
 				// Log error but continue with other updates
@@ -279,7 +279,7 @@ func (m *QueueStatusManager) GetQueueDepth() int {
 func (m *QueueStatusManager) GetQueuedItems() []QueueItem {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	items := make([]QueueItem, 0, len(m.items))
 	for _, item := range m.items {
 		items = append(items, item)

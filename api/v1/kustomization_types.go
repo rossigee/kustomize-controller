@@ -319,13 +319,13 @@ type QueueMetadata struct {
 	// This helps track how long a resource has been waiting for processing.
 	// +optional
 	QueuedAt *metav1.Time `json:"queuedAt,omitempty"`
-	
+
 	// Position indicates the current position in the reconciliation queue.
 	// This field is optional and may not be provided in all configurations
 	// depending on the queue-position-tracking feature flag.
 	// +optional
 	Position *int `json:"position,omitempty"`
-	
+
 	// EstimatedProcessingTime provides an estimate of when reconciliation will begin
 	// based on current queue depth and historical processing times.
 	// This field is optional and may not be provided in all configurations
