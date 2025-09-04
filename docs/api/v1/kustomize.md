@@ -1162,6 +1162,23 @@ github.com/fluxcd/pkg/apis/meta.History
 tracking the revision, the state and the duration of each attempt.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>queueMetadata</code><br>
+<em>
+<a href="#kustomize.toolkit.fluxcd.io/v1.QueueMetadata">
+QueueMetadata
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>QueueMetadata provides visibility into reconciliation queue state when a resource
+has been discovered by the controller but is waiting for processing.
+This field helps distinguish between &ldquo;undiscovered&rdquo; vs &ldquo;queued&rdquo; resources during
+high load conditions.</p>
+</td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -1216,6 +1233,75 @@ the variables and their values to be substituted in the YAML manifests.
 The ConfigMap and the Secret data keys represent the var names, and they
 must match the vars declared in the manifests for the substitution to
 happen.</p>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<h3 id="kustomize.toolkit.fluxcd.io/v1.QueueMetadata">QueueMetadata
+</h3>
+<p>
+(<em>Appears on:</em>
+<a href="#kustomize.toolkit.fluxcd.io/v1.KustomizationStatus">KustomizationStatus</a>)
+</p>
+<p>QueueMetadata provides visibility into reconciliation queue state.
+It helps operators and users understand when resources are discovered
+but waiting for processing during high load conditions.</p>
+<div class="md-typeset__scrollwrap">
+<div class="md-typeset__table">
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>queuedAt</code><br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.18/#time-v1-meta">
+Kubernetes meta/v1.Time
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>QueuedAt indicates when the resource was queued for reconciliation.
+This helps track how long a resource has been waiting for processing.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>position</code><br>
+<em>
+int
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Position indicates the current position in the reconciliation queue.
+This field is optional and may not be provided in all configurations
+depending on the queue-position-tracking feature flag.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>estimatedProcessingTime</code><br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.18/#time-v1-meta">
+Kubernetes meta/v1.Time
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>EstimatedProcessingTime provides an estimate of when reconciliation will begin
+based on current queue depth and historical processing times.
+This field is optional and may not be provided in all configurations
+depending on the queue-time-estimation feature flag.</p>
 </td>
 </tr>
 </tbody>
