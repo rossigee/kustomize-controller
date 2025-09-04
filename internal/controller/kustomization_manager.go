@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/workqueue"
@@ -35,6 +36,8 @@ import (
 	sourcev1 "github.com/fluxcd/source-controller/api/v1"
 
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
+	"github.com/fluxcd/kustomize-controller/internal/features"
+	"github.com/fluxcd/kustomize-controller/internal/queue"
 )
 
 // KustomizationReconcilerOptions contains options for the KustomizationReconciler.
@@ -130,6 +133,22 @@ func (r *KustomizationReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 		},
 	); err != nil {
 		return fmt.Errorf("failed creating index %s: %w", indexSecret, err)
+	}
+
+	// Initialize queue status manager if queue status reporting is enabled
+	queueStatusEnabled, _ := features.Enabled(features.QueueStatusReporting)
+	if queueStatusEnabled {
+		positionTrackingEnabled, _ := features.Enabled(features.QueuePositionTracking)
+		timeEstimationEnabled, _ := features.Enabled(features.QueueTimeEstimation)
+
+		r.QueueStatusManager = queue.NewQueueStatusManager(mgr.GetClient(), queue.QueueStatusManagerOptions{
+			EnablePositions:  positionTrackingEnabled,
+			EnableEstimation: timeEstimationEnabled,
+			UpdateInterval:   30 * time.Second,
+		})
+
+		// Start background status updater
+		go r.QueueStatusManager.StartStatusUpdater(ctx)
 	}
 
 	var blder *builder.Builder

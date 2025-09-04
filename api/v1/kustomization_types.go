@@ -308,6 +308,36 @@ type KustomizationStatus struct {
 	// tracking the revision, the state and the duration of each attempt.
 	// +optional
 	History meta.History `json:"history,omitempty"`
+
+	// QueueMetadata provides visibility into reconciliation queue state when a resource
+	// has been discovered by the controller but is waiting for processing.
+	// This field helps distinguish between "undiscovered" vs "queued" resources during
+	// high load conditions.
+	// +optional
+	QueueMetadata *QueueMetadata `json:"queueMetadata,omitempty"`
+}
+
+// QueueMetadata provides visibility into reconciliation queue state.
+// It helps operators and users understand when resources are discovered
+// but waiting for processing during high load conditions.
+type QueueMetadata struct {
+	// QueuedAt indicates when the resource was queued for reconciliation.
+	// This helps track how long a resource has been waiting for processing.
+	// +optional
+	QueuedAt *metav1.Time `json:"queuedAt,omitempty"`
+	
+	// Position indicates the current position in the reconciliation queue.
+	// This field is optional and may not be provided in all configurations
+	// depending on the queue-position-tracking feature flag.
+	// +optional
+	Position *int `json:"position,omitempty"`
+	
+	// EstimatedProcessingTime provides an estimate of when reconciliation will begin
+	// based on current queue depth and historical processing times.
+	// This field is optional and may not be provided in all configurations
+	// depending on the queue-time-estimation feature flag.
+	// +optional
+	EstimatedProcessingTime *metav1.Time `json:"estimatedProcessingTime,omitempty"`
 }
 
 // GetTimeout returns the timeout with default.

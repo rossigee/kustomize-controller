@@ -55,6 +55,24 @@ const (
 	// immediate processing of the new revision. This can help avoid getting
 	// stuck on failing deployments when fixes are available.
 	CancelHealthCheckOnNewRevision = "CancelHealthCheckOnNewRevision"
+
+	// AdditiveCELDependencyCheck controls whether the CEL dependency check
+	// should be additive, meaning that the built-in readiness check will
+	// be added to the user-defined CEL expressions.
+	AdditiveCELDependencyCheck = "AdditiveCELDependencyCheck"
+
+	// QueueStatusReporting enables immediate status updates for queued resources
+	// to improve visibility during high load conditions. When enabled, resources
+	// show "Queued" status instead of the misleading observedGeneration: -1.
+	QueueStatusReporting = "QueueStatusReporting"
+
+	// QueuePositionTracking enables position tracking in the reconciliation queue.
+	// This is an experimental feature that provides additional queue visibility.
+	QueuePositionTracking = "QueuePositionTracking"
+
+	// QueueTimeEstimation enables estimated processing time calculation based on
+	// queue depth and historical processing times. This is an experimental feature.
+	QueueTimeEstimation = "QueueTimeEstimation"
 )
 
 var features = map[string]bool{
@@ -75,7 +93,7 @@ var features = map[string]bool{
 	GroupChangeLog: false,
 	// AdditiveCELDependencyCheck
 	// opt-in from v1.7
-	controller.FeatureGateAdditiveCELDependencyCheck: false,
+	AdditiveCELDependencyCheck: false,
 	// ExternalArtifact
 	// opt-in from v1.7
 	controller.FeatureGateExternalArtifact: false,
@@ -88,6 +106,15 @@ var features = map[string]bool{
 	// DirectSourceFetch
 	// opt-in from v1.8
 	controller.FeatureGateDirectSourceFetch: false,
+	// QueueStatusReporting
+	// opt-in from v1.8
+	QueueStatusReporting: true,
+	// QueuePositionTracking
+	// opt-in from v1.8 (experimental)
+	QueuePositionTracking: false,
+	// QueueTimeEstimation
+	// opt-in from v1.8 (experimental)
+	QueueTimeEstimation: false,
 }
 
 func init() {

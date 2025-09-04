@@ -71,6 +71,8 @@ import (
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
 	"github.com/fluxcd/kustomize-controller/internal/decryptor"
 	"github.com/fluxcd/kustomize-controller/internal/inventory"
+	"github.com/fluxcd/kustomize-controller/internal/queue"
+	intruntime "github.com/fluxcd/kustomize-controller/internal/runtime"
 )
 
 // +kubebuilder:rbac:groups=kustomize.toolkit.fluxcd.io,resources=kustomizations,verbs=get;list;watch;create;update;patch;delete
@@ -121,19 +123,41 @@ type KustomizationReconciler struct {
 	FailFast                   bool
 	GroupChangeLog             bool
 	StrictSubstitutions        bool
+	QueueStatusManager         *queue.QueueStatusManager
 }
 
 func (r *KustomizationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	log := ctrl.LoggerFrom(ctx)
 	reconcileStart := time.Now()
 
+	// Mark as dequeued (processing started) if queue status manager is enabled
+	if r.QueueStatusManager != nil {
+		r.QueueStatusManager.TrackDequeued(req)
+	}
+
 	obj := &kustomizev1.Kustomization{}
 	if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// Track queued resources if queue status manager is enabled and this is the first time seeing this resource
+	if r.QueueStatusManager != nil && obj.Status.ObservedGeneration == -1 {
+		if err := r.QueueStatusManager.TrackQueued(ctx, req); err != nil {
+			log.Error(err, "failed to track queued resource")
+		}
+	}
+
 	// Initialize the runtime patcher with the current version of the object.
 	patcher := patch.NewSerialPatcher(obj, r.Client)
+
+	// Clear queue metadata if this was a queued resource starting processing
+	if obj.Status.ObservedGeneration == 0 && obj.Status.QueueMetadata != nil {
+		obj.Status.QueueMetadata = nil
+		conditions.MarkReconciling(obj, meta.ProgressingReason, "Starting reconciliation (was queued)")
+		if err := r.patch(ctx, obj, patcher); err != nil {
+			log.Error(err, "failed to clear queue metadata")
+		}
+	}
 
 	// Finalise the reconciliation and report the results.
 	defer func() {
