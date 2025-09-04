@@ -249,6 +249,14 @@ func (r *KustomizationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	revision := artifactSource.GetArtifact().Revision
 	originRevision := getOriginRevision(artifactSource)
 
+	// Update the last attempted revision before dependency checks to ensure
+	// that we don't get stuck retrying the same old revision indefinitely
+	// when dependencies are updated to newer revisions.
+	obj.Status.LastAttemptedRevision = revision
+	if err := r.patch(ctx, obj, patcher); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
+	}
+
 	// Check dependencies and requeue the reconciliation if the check fails.
 	if len(obj.Spec.DependsOn) > 0 {
 		if err := r.checkDependencies(ctx, obj, artifactSource); err != nil {
@@ -364,8 +372,7 @@ func (r *KustomizationReconciler) reconcile(
 		return err
 	}
 
-	// Report progress and set last attempted revision in status.
-	obj.Status.LastAttemptedRevision = revision
+	// Report progress (last attempted revision already set earlier).
 	progressingMsg = fmt.Sprintf("Building manifests for revision %s with a timeout of %s", revision, obj.GetTimeout().String())
 	conditions.MarkReconciling(obj, meta.ProgressingReason, "%s", progressingMsg)
 	if err := r.patch(ctx, obj, patcher); err != nil {
