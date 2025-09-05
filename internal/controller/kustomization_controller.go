@@ -70,6 +70,7 @@ import (
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
 	intcache "github.com/fluxcd/kustomize-controller/internal/cache"
 	"github.com/fluxcd/kustomize-controller/internal/decryptor"
+	"github.com/fluxcd/kustomize-controller/internal/features"
 	"github.com/fluxcd/kustomize-controller/internal/inventory"
 	"github.com/fluxcd/kustomize-controller/internal/queue"
 	intruntime "github.com/fluxcd/kustomize-controller/internal/runtime"
@@ -224,12 +225,14 @@ func (r *KustomizationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 		if apierrors.IsNotFound(err) {
 			msg := fmt.Sprintf("Source '%s' not found", obj.Spec.SourceRef.String())
+			obj.Status.ObservedGeneration = obj.Generation
 			log.Info(msg)
 			return ctrl.Result{RequeueAfter: obj.GetRetryInterval()}, nil
 		}
 
 		if acl.IsAccessDenied(err) {
 			conditions.MarkFalse(obj, meta.ReadyCondition, apiacl.AccessDeniedReason, "%s", err)
+			obj.Status.ObservedGeneration = obj.Generation
 			log.Error(err, "Access denied to cross-namespace source")
 			r.event(obj, "", "", eventv1.EventSeverityError, err.Error(), nil)
 			return ctrl.Result{RequeueAfter: obj.GetRetryInterval()}, nil
@@ -243,6 +246,7 @@ func (r *KustomizationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if artifactSource.GetArtifact() == nil {
 		msg := fmt.Sprintf("Source artifact not found, retrying in %s", r.requeueDependency.String())
 		conditions.MarkFalse(obj, meta.ReadyCondition, meta.ArtifactFailedReason, "%s", msg)
+		obj.Status.ObservedGeneration = obj.Generation
 		log.Info(msg)
 		return ctrl.Result{RequeueAfter: r.requeueDependency}, nil
 	}
@@ -270,8 +274,9 @@ func (r *KustomizationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				return ctrl.Result{}, err
 			}
 
-			// Retry on transient errors.
+			// Retry on transient errors - Always update ObservedGeneration
 			conditions.MarkFalse(obj, meta.ReadyCondition, meta.DependencyNotReadyReason, "%s", err)
+			obj.Status.ObservedGeneration = obj.Generation
 			msg := fmt.Sprintf("Dependencies do not meet ready condition, retrying in %s", r.requeueDependency.String())
 			log.Info(msg)
 			r.event(obj, revision, originRevision, eventv1.EventSeverityInfo, msg, nil)
@@ -287,12 +292,17 @@ func (r *KustomizationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if errors.Is(reconcileErr, fetch.ErrFileNotFound) {
 		msg := fmt.Sprintf("Source is not ready, artifact not found, retrying in %s", r.requeueDependency.String())
 		conditions.MarkFalse(obj, meta.ReadyCondition, meta.ArtifactFailedReason, "%s", msg)
+		obj.Status.ObservedGeneration = obj.Generation
 		log.Info(msg)
 		return ctrl.Result{RequeueAfter: r.requeueDependency}, nil
 	}
 
 	// Broadcast the reconciliation failure and requeue at the specified retry interval.
 	if reconcileErr != nil {
+		// Always update status on reconciliation failures
+		conditions.MarkFalse(obj, meta.ReadyCondition, meta.ReconciliationFailedReason, "%s", reconcileErr)
+		obj.Status.ObservedGeneration = obj.Generation
+
 		log.Error(reconcileErr, fmt.Sprintf("Reconciliation failed after %s, next try in %s",
 			time.Since(reconcileStart).String(),
 			obj.GetRetryInterval().String()),
@@ -585,7 +595,9 @@ func (r *KustomizationReconciler) checkDependencies(ctx context.Context,
 			return fmt.Errorf("dependency '%s' is not ready", depName)
 		}
 		if !apimeta.IsStatusConditionTrue(dep.Status.Conditions, meta.ReadyCondition) {
-			return fmt.Errorf("dependency '%s' is not ready", depName)
+			// Enhanced error message with queue information
+			queueInfo := r.getQueueInfoForDependency(&dep)
+			return fmt.Errorf("dependency '%s' is not ready%s", depName, queueInfo)
 		}
 
 		// Check if the dependency source matches the current source
@@ -608,6 +620,60 @@ func (r *KustomizationReconciler) checkDependencies(ctx context.Context,
 	}
 
 	return nil
+}
+
+// getQueueInfoForDependency extracts queue metadata from a dependency's status
+// to provide enhanced error messages with queue position and estimated processing time.
+func (r *KustomizationReconciler) getQueueInfoForDependency(dep *kustomizev1.Kustomization) string {
+	// Check if queue status reporting is enabled
+	queueStatusEnabled, _ := features.Enabled(features.QueueStatusReporting)
+	if !queueStatusEnabled {
+		return ""
+	}
+
+	// Look for queue metadata in the dependency's status
+	if dep.Status.QueueMetadata != nil {
+		var queueInfo strings.Builder
+
+		// Add queue position if available
+		positionTrackingEnabled, _ := features.Enabled(features.QueuePositionTracking)
+		if positionTrackingEnabled && dep.Status.QueueMetadata.Position != nil && *dep.Status.QueueMetadata.Position > 0 {
+			queueInfo.WriteString(fmt.Sprintf(" (queue position %d", *dep.Status.QueueMetadata.Position))
+		}
+
+		// Add estimated processing time if available
+		timeEstimationEnabled, _ := features.Enabled(features.QueueTimeEstimation)
+		if timeEstimationEnabled && dep.Status.QueueMetadata.EstimatedProcessingTime != nil {
+			if queueInfo.Len() == 0 {
+				queueInfo.WriteString(" (")
+			} else {
+				queueInfo.WriteString(", ")
+			}
+
+			// Calculate time remaining
+			now := time.Now()
+			if dep.Status.QueueMetadata.EstimatedProcessingTime.After(now) {
+				timeRemaining := dep.Status.QueueMetadata.EstimatedProcessingTime.Sub(now)
+				queueInfo.WriteString(fmt.Sprintf("estimated processing in %s", timeRemaining.Round(time.Second)))
+			} else {
+				queueInfo.WriteString("processing soon")
+			}
+		}
+
+		if queueInfo.Len() > 0 {
+			queueInfo.WriteString(")")
+			return queueInfo.String()
+		}
+	}
+
+	// Fallback: check if dependency has queued condition
+	for _, condition := range dep.Status.Conditions {
+		if condition.Type == meta.ReadyCondition && condition.Reason == "Queued" {
+			return " (queued for reconciliation)"
+		}
+	}
+
+	return ""
 }
 
 // evalReadyExpr evaluates the CEL expression for the dependency readiness check.
@@ -884,6 +950,28 @@ func (r *KustomizationReconciler) apply(ctx context.Context,
 	var changeSetLog strings.Builder
 
 	if len(objects) > 0 {
+		// Check for deprecated API versions and log with context
+		for _, resource := range objects {
+			apiVersion := resource.GetAPIVersion()
+			kind := resource.GetKind()
+			name := resource.GetName()
+			namespace := resource.GetNamespace()
+
+			if strings.Contains(apiVersion, "v1beta2") && (kind == "Alert" || kind == "Provider") {
+				log.Info("Applying resource with deprecated API version",
+					"kind", kind,
+					"apiVersion", apiVersion,
+					"resourceName", name,
+					"resourceNamespace", namespace,
+					"kustomizationName", obj.GetName(),
+					"kustomizationNamespace", obj.GetNamespace(),
+					"recommendedVersion", strings.Replace(apiVersion, "v1beta2", "v1beta3", 1),
+					"upgradeMessage", fmt.Sprintf("Please update %s/%s in namespace %s from %s to %s",
+						kind, name, namespace, apiVersion,
+						strings.Replace(apiVersion, "v1beta2", "v1beta3", 1)))
+			}
+		}
+
 		changeSet, err := manager.ApplyAllStaged(ctx, objects, applyOpts)
 
 		if changeSet != nil && len(changeSet.Entries) > 0 {

@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kustomize-controller-queue-dependency-test
+  namespace: flux-system
+  labels:
+    app: kustomize-controller-queue-dependency-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kustomize-controller-queue-dependency-test
+  template:
+    metadata:
+      labels:
+        app: kustomize-controller-queue-dependency-test
+    spec:
+      serviceAccountName: kustomize-controller
+      containers:
+      - name: manager
+        image: ghcr.io/rossigee/kustomize-controller:enhanced-context-logging
+        imagePullPolicy: Always
+        args:
+        - --concurrent=4
+        - --kube-api-qps=500
+        - --kube-api-burst=1000
+        - --requeue-dependency=30s
+        - --enable-leader-election
+        - --feature-gates=QueueStatusReporting=true,QueuePositionTracking=true,QueueTimeEstimation=true
+        env:
+        - name: RUNTIME_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        ports:
+        - containerPort: 8080
+          name: http-prom
+          protocol: TCP
+        - containerPort: 9440
+          name: healthz
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz
+          timeoutSeconds: 1
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: healthz
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /tmp
+          name: temp
+      terminationGracePeriodSeconds: 600
+      volumes:
+      - emptyDir: {}
+        name: temp

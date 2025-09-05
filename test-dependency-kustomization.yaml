@@ -1,0 +1,31 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: test-dependency-parent
+  namespace: flux-system
+spec:
+  interval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: ca-issuers  # Assuming this exists from previous tests
+  path: "./kustomize"
+  prune: false
+  timeout: 10m
+  dependsOn:
+  - name: test-dependency-child
+    namespace: flux-system
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: test-dependency-child
+  namespace: flux-system
+spec:
+  interval: 5m
+  sourceRef:
+    kind: GitRepository
+    name: ca-issuers
+  path: "./kustomize"
+  prune: false
+  timeout: 10m
+  suspend: true  # Keep this suspended so it stays in queue
