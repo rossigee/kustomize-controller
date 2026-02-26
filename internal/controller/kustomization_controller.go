@@ -72,7 +72,6 @@ import (
 	"github.com/fluxcd/kustomize-controller/internal/decryptor"
 	"github.com/fluxcd/kustomize-controller/internal/inventory"
 	"github.com/fluxcd/kustomize-controller/internal/queue"
-	intruntime "github.com/fluxcd/kustomize-controller/internal/runtime"
 )
 
 // +kubebuilder:rbac:groups=kustomize.toolkit.fluxcd.io,resources=kustomizations,verbs=get;list;watch;create;update;patch;delete
